@@ -145,6 +145,16 @@
             background: var(--accent); color: white; font-weight: bold;
             font-size: 18px; cursor: pointer;
         }
+        /* This tells the phone NOT to wait 300ms for a double-tap zoom */
+#boba-btn, #bean-btn, .reset-btn {
+    touch-action: manipulation;
+}
+
+#bubu-img {
+    /* Forces the phone to use the Graphics Chip for the scale effect */
+    will-change: transform;
+    transform: translateZ(0);
+}
     </style>
 </head>
 <body>
@@ -184,8 +194,8 @@
         </div>
 
         <div class="controls">
-            <button id="boba-btn" class="btn" onclick="feed('boba')">DRINK BOBA 🧋</button>
-            <button id="bean-btn" class="btn" onclick="feed('beans')">EAT BEANS 🫘</button>
+            <button id="boba-btn" class="btn">DRINK BOBA 🧋</button>
+            <button id="bean-btn" class="btn">EAT BEANS 🫘</button>
         </div>
     </div>
 
@@ -199,141 +209,182 @@
         </div>
     </div>
 </div>
-
 <script>
-// 1. Create a "Preloader" to keep sounds in the phone's memory
-const sounds = {
-    drink: new Audio('drink.mp3'),
-    munch: new Audio('munch.mp3'),
-    fart: new Audio('fart.mp3'),
-    cash: new Audio('chaching.mp3'),
-    drumroll: new Audio('drumroll.mp3')
-};
+    // --- 1. PRO AUDIO ENGINE ---
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AudioContext();
+    const soundBuffers = {};
 
-// 2. Optimized Play Function (Prevents Lag)
-function playSound(name) {
-    const s = sounds[name].cloneNode(); // Creates a "fresh" copy so sounds can overlap
-    s.play().catch(e => console.log("Mobile blocked audio until first tap"));
-}
-
-let cash = 0, peeProgress = 0, poopProgress = 0, isBusy = false;
-const goal = 1000;
-
-function feed(type) {
-    if (isBusy) return;
-    
-    // 3. One-time "Unlock" for Mobile (Required by iOS/Android)
-    // This runs on every tap but only "wakes up" the audio engine once
-    Object.values(sounds).forEach(s => {
-        if (s.paused) { s.play(); s.pause(); }
-    });
-
-    const bubu = document.getElementById('bubu-img');
-    bubu.style.transform = "scale(1.1) translateY(-10px)";
-
-    if (type === 'boba') {
-        bubu.src = "bubu_boba.png"; 
-        playSound('drink'); // Using the new lag-free function
-        peeProgress += 20;
-        if (peeProgress >= 100) { deliver('💧'); peeProgress = 0; }
-    } else {
-        bubu.src = "bubu_bean.png"; 
-        playSound('munch');
-        poopProgress += 5; 
-        if (Math.random() < 0.25) { triggerFart(); }
-        if (poopProgress >= 100) { deliver('💩'); poopProgress = 0; }
+    // This function "wakes up" the audio on mobile devices
+    async function initAudio() {
+        if (audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+        }
     }
 
-    setTimeout(() => {
-        bubu.style.transform = "scale(1) translateY(0)";
-        bubu.src = "bubu_idle.png";
-    }, 300);
-    updateMeters();
-}
+    // This fetches the mp3 and turns it into raw data
+    async function loadSound(name, url) {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            audioCtx.decodeAudioData(arrayBuffer, (buffer) => {
+                soundBuffers[name] = buffer;
+            }, (e) => { console.error("Error decoding " + name, e); });
+        } catch (e) { console.error("Fetch error:", name, e); }
+    }
 
-function triggerFart() {
-    playSound('fart');
-    const fart = document.getElementById('fart-popup');
-    fart.style.display = 'block'; 
-    cash += 25;
-    setTimeout(() => { 
-        fart.style.display = 'none'; 
-        updateMeters(); 
-        checkWin();
-    }, 800);
-}
+    // The "Instant" play function
+    function play(name) {
+        if (!soundBuffers[name]) {
+            console.warn("Sound not loaded yet: " + name);
+            return;
+        }
+        const source = audioCtx.createBufferSource();
+        source.buffer = soundBuffers[name];
+        source.connect(audioCtx.destination);
+        source.start(0);
+    }
 
-function deliver(emoji) {
-    isBusy = true;
-    const cart = document.getElementById('chef-cart');
-    const lid = document.getElementById('cloche-lid');
-    const item = document.getElementById('item-emoji');
+    // LOAD ALL SOUNDS IMMEDIATELY
+    loadSound('drink', 'drink.mp3');
+    loadSound('munch', 'munch.mp3');
+    loadSound('fart', 'fart.mp3');
+    loadSound('cash', 'chaching.mp3');
+    loadSound('drumroll', 'drumroll.mp3');
 
-    item.innerText = emoji; 
-    item.style.opacity = "0"; 
-    item.style.transform = "translateY(-30px)";
-    lid.style.opacity = "0"; 
-    lid.style.top = "-100px";
-    
-    cart.style.left = "15%";
-    
-    setTimeout(() => {
-        item.style.opacity = "1"; 
-        item.style.transform = "translateY(0)";
-        setTimeout(() => {
-            lid.style.opacity = "1"; 
-            lid.style.top = "5px";
-            setTimeout(() => {
-                playSound('cash');
-                cash += (emoji === '💧') ? 100 : 400;
-                cart.style.left = "110%";
-                
-                setTimeout(() => {
-                    cart.style.transition = "none";
-                    cart.style.left = "-100%";
-                    setTimeout(() => {
-                        cart.style.transition = "left 0.7s ease-in-out";
-                        isBusy = false;
-                        updateMeters(); 
-                        checkWin();
-                    }, 50);
-                }, 800);
-            }, 1000);
-        }, 600);
-    }, 800);
-}
+    // --- 2. GAME STATE ---
+    let cash = 0, peeProgress = 0, poopProgress = 0, isBusy = false;
+    const goal = 1000;
 
-function updateMeters() {
-    document.getElementById('cash-count').innerText = cash;
-    document.getElementById('main-cash-bar').style.width = Math.min((cash / goal) * 100, 100) + "%";
-    document.getElementById('pee-fill').style.width = peeProgress + "%";
-    document.getElementById('poop-fill').style.width = poopProgress + "%";
-}
+    // --- 3. THE "WAKE UP" CLICK HANDLER ---
+    function attachInstantClick(id, callback) {
+        const el = document.getElementById(id);
+        
+        const trigger = async (e) => {
+            if (isBusy) return;
+            e.preventDefault();
+            
+            // This line is the "Magic Fix" for silence on iPhone/Android
+            await initAudio(); 
+            
+            callback();
+        };
 
-function checkWin() {
-    if (cash >= goal && !isBusy) {
-        isBusy = true;
-        const overlay = document.getElementById('end-overlay');
-        const txt = document.getElementById('suspense-text');
-        overlay.style.display = 'flex';
-        txt.classList.add('pulse');
-        playSound('drumroll');
+        el.addEventListener('touchstart', trigger, { passive: false });
+        el.addEventListener('click', trigger);
+    }
 
-        const sequence = ["The prize is...", "Wait for it...", "Drumroll...", "3...", "2...", "1..."];
-        let i = 0;
-        const interval = setInterval(() => {
-            txt.innerText = sequence[i];
-            i++;
-            if (i >= sequence.length) {
-                clearInterval(interval);
-                setTimeout(() => {
-                    txt.style.display = 'none';
-                    document.getElementById('final-prize').style.display = 'flex';
-                }, 800);
+    // --- 4. GAME LOGIC ---
+    function feed(type) {
+        const bubu = document.getElementById('bubu-img');
+        bubu.style.transform = "scale(1.1) translateZ(0)";
+
+        if (type === 'boba') {
+            bubu.src = "bubu_boba.png"; 
+            play('drink');
+            peeProgress += 20;
+            if (peeProgress >= 100) { deliver('💧'); peeProgress = 0; }
+        } else {
+            bubu.src = "bubu_bean.png"; 
+            play('munch');
+            poopProgress += 5; 
+            if (Math.random() < 0.25) {
+                play('fart');
+                triggerFart();
             }
-        }, 1000);
+            if (poopProgress >= 100) { deliver('💩'); poopProgress = 0; }
+        }
+
+        setTimeout(() => {
+            bubu.src = "bubu_idle.png";
+            bubu.style.transform = "scale(1) translateZ(0)";
+        }, 150);
+        updateMeters();
     }
-}
+
+    function triggerFart() {
+        const fart = document.getElementById('fart-popup');
+        fart.style.display = 'block'; 
+        cash += 25;
+        setTimeout(() => { 
+            fart.style.display = 'none'; 
+            updateMeters(); 
+            checkWin();
+        }, 800);
+    }
+
+    function deliver(emoji) {
+        isBusy = true;
+        const cart = document.getElementById('chef-cart');
+        const lid = document.getElementById('cloche-lid');
+        const item = document.getElementById('item-emoji');
+
+        item.innerText = emoji; 
+        item.style.opacity = "0"; 
+        lid.style.opacity = "0"; 
+        lid.style.top = "-100px";
+        cart.style.left = "15%";
+        
+        setTimeout(() => {
+            item.style.opacity = "1"; 
+            item.style.transform = "translateY(0) translateZ(0)";
+            setTimeout(() => {
+                lid.style.opacity = "1"; 
+                lid.style.top = "5px";
+                setTimeout(() => {
+                    play('cash');
+                    cash += (emoji === '💧') ? 100 : 400;
+                    cart.style.left = "110%";
+                    setTimeout(() => {
+                        cart.style.transition = "none";
+                        cart.style.left = "-100%";
+                        setTimeout(() => {
+                            cart.style.transition = "left 0.7s ease-in-out";
+                            isBusy = false;
+                            updateMeters(); 
+                            checkWin();
+                        }, 50);
+                    }, 800);
+                }, 1000);
+            }, 600);
+        }, 800);
+    }
+
+    function updateMeters() {
+        document.getElementById('cash-count').innerText = cash;
+        document.getElementById('main-cash-bar').style.width = Math.min((cash / goal) * 100, 100) + "%";
+        document.getElementById('pee-fill').style.width = peeProgress + "%";
+        document.getElementById('poop-fill').style.width = poopProgress + "%";
+    }
+
+    function checkWin() {
+        if (cash >= goal && !isBusy) {
+            isBusy = true;
+            const overlay = document.getElementById('end-overlay');
+            const txt = document.getElementById('suspense-text');
+            overlay.style.display = 'flex';
+            play('drumroll');
+
+            const sequence = ["The prize is...", "Wait for it...", "Drumroll...", "3...", "2...", "1..."];
+            let i = 0;
+            const interval = setInterval(() => {
+                txt.innerText = sequence[i];
+                i++;
+                if (i >= sequence.length) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        txt.style.display = 'none';
+                        document.getElementById('final-prize').style.display = 'flex';
+                    }, 800);
+                }
+            }, 1000);
+        }
+    }
+
+    // --- 5. INITIALIZE ---
+    attachInstantClick('boba-btn', () => feed('boba'));
+    attachInstantClick('bean-btn', () => feed('beans'));
+
 </script>
 </body>
 </html>
