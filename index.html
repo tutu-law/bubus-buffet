@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Bubu's Gourmet Buffet</title>
+    <style>
+        :root {
+            --bg-pink: #fff0f5;
+            --accent: #ff99cc;
+            --gold: #ffd700;
+            --dudu-brown: #8b5a2b;
+        }
+
+        * {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #333; /* Dark backdrop to frame the game on desktop */
+            font-family: 'Comic Sans MS', 'Chalkboard SE', 'Comic Neue', cursive, system-ui;
+            display: flex; justify-content: center; align-items: center;
+            height: 100dvh; margin: 0; overflow: hidden; color: #444;
+        }
+
+        #game-box {
+            width: 100%;
+            height: 100dvh;
+            max-width: 480px; /* Standard mobile width ceiling */
+            background: white; 
+            position: relative;
+            display: flex; flex-direction: column; 
+            padding: 15px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+        }
+
+        /* Desktop specific styling */
+        @media (min-width: 500px) and (min-height: 600px) {
+            #game-box {
+                height: 95dvh;
+                border: 8px solid var(--accent);
+                border-radius: 40px;
+            }
+        }
+
+        /* --- HUD --- */
+        .hud { width: 100%; text-align: center; flex-shrink: 0; margin-bottom: 10px; }
+        .cash-container { font-size: clamp(24px, 7vw, 32px); font-weight: bold; margin-bottom: 5px; }
+        .main-progress-bg {
+            width: 100%; height: 24px; background: #eee; border-radius: 20px;
+            border: 2px solid #ddd; overflow: hidden; position: relative;
+        }
+        #main-cash-bar {
+            width: 0%; height: 100%; background: linear-gradient(to right, var(--gold), #ffaa00);
+            transition: width 0.5s ease-out;
+        }
+        .goal-label { position: absolute; width: 100%; text-align: center; top: 3px; font-size: 12px; font-weight: bold; color: #555; }
+
+        /* --- STAGE (The flexible middle area) --- */
+        #stage {
+            flex-grow: 1; width: 100%; position: relative;
+            display: flex; justify-content: center; align-items: center;
+            overflow: hidden;
+        }
+
+        #bubu-img { 
+            width: 60%; 
+            max-width: 220px; 
+            height: auto; 
+            z-index: 5; 
+            transition: transform 0.1s; 
+        }
+
+        #fart-popup {
+            position: absolute; display: none; text-align: center;
+            animation: fartJump 0.8s ease-out; z-index: 20;
+        }
+
+        @keyframes fartJump {
+            0% { opacity: 1; transform: scale(0.8) translateY(0); }
+            100% { opacity: 0; transform: scale(1.3) translateY(-120px); }
+        }
+
+        /* --- CHEF DELIVERY (Relative Positioning) --- */
+        #chef-cart {
+            position: absolute; bottom: 15%; left: -100%; /* Start completely off-left */
+            display: flex; align-items: center; transition: left 0.7s ease-in-out; z-index: 10;
+            white-space: nowrap;
+        }
+        .platter-area { position: relative; width: 80px; height: 60px; display: flex; justify-content: center; align-items: flex-end; }
+        .plate { width: 70px; height: 10px; background: #fdfdfd; border: 2px solid #ccc; border-radius: 50%; }
+        #item-emoji { position: absolute; bottom: 10px; font-size: 35px; opacity: 0; transform: translateY(-30px); transition: all 0.4s ease; }
+        .cloche {
+            position: absolute; width: 66px; height: 40px; background: silver;
+            border: 3px solid #999; border-radius: 50px 50px 0 0;
+            top: -100px; opacity: 0; transition: all 0.4s; z-index: 13;
+        }
+
+        /* --- CONTROLS & METERS (Pinned to Bottom) --- */
+        .bottom-ui {
+            flex-shrink: 0; width: 100%; 
+            padding-bottom: env(safe-area-inset-bottom, 10px);
+        }
+
+        .controls { width: 100%; display: flex; gap: 10px; margin-top: 10px; }
+        .btn { 
+            flex: 1; padding: clamp(16px, 4.5dvh, 25px) 5px; 
+            border: none; border-radius: 20px; cursor: pointer; 
+            font-size: 16px; font-weight: bold; color: white;
+        }
+        #boba-btn { background: #9b59b6; box-shadow: 0 5px 0 #8e44ad; }
+        #bean-btn { background: #e67e22; box-shadow: 0 5px 0 #d35400; }
+        .btn:active { transform: translateY(3px); box-shadow: none; }
+
+        .meter-group { width: 100%; margin-top: 10px; }
+        .meter-label { font-size: 12px; color: #777; margin-bottom: 3px; font-weight: bold; }
+        .meter-bg { width: 100%; height: 14px; background: #eee; border-radius: 10px; border: 1px solid #ddd; margin-bottom: 5px;}
+        .fill { width: 0%; height: 100%; transition: width 0.2s; border-radius: 10px; }
+
+        /* --- ENDING OVERLAY --- */
+        #end-overlay {
+            position: absolute; inset: 0;
+            background: white; z-index: 1000; 
+            display: none; flex-direction: column;
+            justify-content: center; align-items: center; 
+            padding: 30px; text-align: center;
+        }
+
+        #dudu-final-img { 
+            width: 100%; max-height: 45dvh;
+            object-fit: contain; border-radius: 20px; 
+            border: 4px solid var(--accent); margin: 20px 0; 
+        }
+
+        .suspense-box { font-size: 28px; font-weight: bold; color: var(--accent); height: 40px; }
+        .pulse { animation: pulseText 1s infinite; }
+        @keyframes pulseText { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        
+        .reset-btn {
+            padding: 15px 40px; border-radius: 30px; border: none; 
+            background: var(--accent); color: white; font-weight: bold;
+            font-size: 18px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-box">
+    <div class="hud">
+        <div class="cash-container">💰 $<span id="cash-count">0</span></div>
+        <div class="main-progress-bg">
+            <div id="main-cash-bar"></div>
+            <div class="goal-label">MYSTERY PRIZE: $1000</div>
+        </div>
+    </div>
+
+    <div id="stage">
+        <div id="fart-popup">
+            <div style="color:#4CAF50; font-weight:bold;">BONUS FART!</div>
+            <div style="font-size: 40px;">💨</div>
+        </div>
+        <img src="bubu_idle.png" id="bubu-img" alt="Bubu">
+        
+        <div id="chef-cart">
+            <span style="font-size: 50px;">👨‍🍳🛒</span>
+            <div class="platter-area">
+                <div class="cloche" id="cloche-lid"></div>
+                <div id="item-emoji"></div>
+                <div class="plate"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bottom-ui">
+        <div class="meter-group">
+            <div class="meter-label">Pee Meter (Boba)</div>
+            <div class="meter-bg"><div id="pee-fill" class="fill" style="background:#fffacd;"></div></div>
+            <div class="meter-label">Poop Meter (Beans)</div>
+            <div class="meter-bg"><div id="poop-fill" class="fill" style="background:#cd853f;"></div></div>
+        </div>
+
+        <div class="controls">
+            <button id="boba-btn" class="btn" onclick="feed('boba')">DRINK BOBA 🧋</button>
+            <button id="bean-btn" class="btn" onclick="feed('beans')">EAT BEANS 🫘</button>
+        </div>
+    </div>
+
+    <div id="end-overlay">
+        <div id="suspense-text" class="suspense-box"></div>
+        <div id="final-prize" style="display:none; flex-direction: column; align-items: center;">
+            <h2 style="color: var(--dudu-brown); margin: 0;">FOOD COMA!</h2>
+            <img src="dudu_full.png" id="dudu-final-img" alt="Dudu Full">
+            <p style="margin-bottom: 20px; font-style: italic;">Dudu can't move... he's too full</p>
+            <button onclick="location.reload()" class="reset-btn">Reset Buffet</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const sfxDrink = new Audio('drink.mp3');
+    const sfxMunch = new Audio('munch.mp3');
+    const sfxFart = new Audio('fart.mp3');
+    const sfxCash = new Audio('chaching.mp3');
+    const sfxDrumroll = new Audio('drumroll.mp3');
+
+    let cash = 0, peeProgress = 0, poopProgress = 0, isBusy = false;
+    const goal = 1000;
+
+    function feed(type) {
+        if (isBusy) return;
+        
+        // Initializing audio for mobile safari
+        [sfxDrink, sfxMunch, sfxFart, sfxCash, sfxDrumroll].forEach(s => {
+            s.play(); s.pause(); s.currentTime = 0;
+        });
+
+        const bubu = document.getElementById('bubu-img');
+        bubu.style.transform = "scale(1.1) translateY(-10px)";
+
+        if (type === 'boba') {
+            bubu.src = "bubu_boba.png"; sfxDrink.play();
+            peeProgress += 20;
+            if (peeProgress >= 100) { deliver('💧'); peeProgress = 0; }
+        } else {
+            bubu.src = "bubu_bean.png"; sfxMunch.play();
+            poopProgress += 5; 
+            if (Math.random() < 0.25) { triggerFart(); }
+            if (poopProgress >= 100) { deliver('💩'); poopProgress = 0; }
+        }
+
+        setTimeout(() => {
+            bubu.style.transform = "scale(1) translateY(0)";
+            bubu.src = "bubu_idle.png";
+        }, 300);
+        updateMeters();
+    }
+
+    function triggerFart() {
+        sfxFart.play();
+        const fart = document.getElementById('fart-popup');
+        fart.style.display = 'block'; 
+        cash += 25;
+        setTimeout(() => { 
+            fart.style.display = 'none'; 
+            updateMeters(); 
+            checkWin();
+        }, 800);
+    }
+
+    function deliver(emoji) {
+        isBusy = true;
+        const cart = document.getElementById('chef-cart');
+        const lid = document.getElementById('cloche-lid');
+        const item = document.getElementById('item-emoji');
+
+        // Reset positions
+        item.innerText = emoji; 
+        item.style.opacity = "0"; 
+        item.style.transform = "translateY(-30px)";
+        lid.style.opacity = "0"; 
+        lid.style.top = "-100px";
+        
+        // Move to relative center
+        cart.style.left = "15%";
+        
+        setTimeout(() => {
+            // Show item
+            item.style.opacity = "1"; 
+            item.style.transform = "translateY(0)";
+            setTimeout(() => {
+                // Cover with lid
+                lid.style.opacity = "1"; 
+                lid.style.top = "5px";
+                setTimeout(() => {
+                    sfxCash.play();
+                    cash += (emoji === '💧') ? 100 : 400;
+                    
+                    // Exit right side
+                    cart.style.left = "110%";
+                    
+                    setTimeout(() => {
+                        // Reset cart to far left instantly for next run
+                        cart.style.transition = "none";
+                        cart.style.left = "-100%";
+                        setTimeout(() => {
+                            cart.style.transition = "left 0.7s ease-in-out";
+                            isBusy = false;
+                            updateMeters(); 
+                            checkWin();
+                        }, 50);
+                    }, 800);
+                }, 1000);
+            }, 600);
+        }, 800);
+    }
+
+    function updateMeters() {
+        document.getElementById('cash-count').innerText = cash;
+        document.getElementById('main-cash-bar').style.width = Math.min((cash / goal) * 100, 100) + "%";
+        document.getElementById('pee-fill').style.width = peeProgress + "%";
+        document.getElementById('poop-fill').style.width = poopProgress + "%";
+    }
+
+    function checkWin() {
+        if (cash >= goal && !isBusy) {
+            isBusy = true;
+            const overlay = document.getElementById('end-overlay');
+            const txt = document.getElementById('suspense-text');
+            overlay.style.display = 'flex';
+            txt.classList.add('pulse');
+            sfxDrumroll.play();
+
+            const sequence = ["The prize is...", "Wait for it...", "Drumroll...", "3...", "2...", "1..."];
+            let i = 0;
+            const interval = setInterval(() => {
+                txt.innerText = sequence[i];
+                i++;
+                if (i >= sequence.length) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        txt.style.display = 'none';
+                        document.getElementById('final-prize').style.display = 'flex';
+                    }, 800);
+                }
+            }, 1000);
+        }
+    }
+</script>
+</body>
+</html>
